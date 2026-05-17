@@ -1,0 +1,20 @@
+# Mac OS X specific system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon\r
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.Trashes
+
+# Clasp local config (Ignored so your project ID isn't pushed to teammate repos)
+.clasp.json
+
+# Node modules (Installed via package manager)
+node_modules/
+
+# IDE and Editor directories (Optional but recommended)
+.vscode/
+.idea/
