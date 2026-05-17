@@ -55,12 +55,18 @@ function handleInsert(data) {
   var rows = data.rows;
   if (!rows || !Array.isArray(rows) || rows.length === 0)
     return jsonResponse({ status: 'error', message: '沒有資料' });
-  rows.forEach(function(row) {
+
+  // 為這批提交統一產生一個 ID
+  var submissionId = Utilities.getUuid();
+
+  rows.forEach(function(row, i) {
     sheet.appendRow(HEADERS.map(function(h) {
+      if (h === '提交ID') return submissionId + '-' + i;          // ← 補上這行
       return row[h] !== undefined ? row[h] : '';
     }));
   });
-  return jsonResponse({ status: 'success', inserted: rows.length });
+
+  return jsonResponse({ status: 'success', inserted: rows.length, submissionId: submissionId });
 }
 
 function handleUpdate(data) {
