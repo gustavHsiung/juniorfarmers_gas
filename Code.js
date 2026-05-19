@@ -8,6 +8,11 @@ var HEADERS = ['提交ID', '時間戳記', '登記人', '農場', '週次',
                '品名', '數量', '單位', '基本進貨價',
                '批價', '批價門檻', '末端建議售價', '品項備注', '本批備註'];
 
+var ORDER_SHEET_NAME = '料理人下單';
+var ORDER_HEADERS = ['時間戳記', '登記人', '店家/料理人', '週次',
+                     '品名', '數量', '單位', '單價（元）',
+                     '交易總價', '送貨地點', '送貨時間', '付款狀態', '備註'];
+
 function getOrCreateSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
@@ -43,7 +48,9 @@ function serializeRow(row) {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    if (data.action === 'update') return handleUpdate(data);
+    if (data.action === 'update')    return handleUpdate(data);
+    if (data.action === 'updateRow') return handleUpdateRow(data);
+    if (data.action === 'order')     return handleOrderInsert(data);
     return handleInsert(data);
   } catch (err) {
     return jsonResponse({ status: 'error', message: err.toString() });
@@ -69,6 +76,33 @@ function handleInsert(data) {
   return jsonResponse({ status: 'success', inserted: rows.length, submissionId: submissionId });
 }
 
+function handleUpdateRow(data) {
+  var sheet = getOrCreateSheet();
+  var rowId = data['提交ID'];
+  if (!rowId) return jsonResponse({ status: 'error', message: '缺少提交ID' });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ status: 'error', message: '找不到對應的資料列' });
+
+  // 一次讀完，在記憶體裡找目標列
+  var allValues = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+  var rowIndex = -1;
+  for (var i = 0; i < allValues.length; i++) {
+    if (String(allValues[i][0]) === rowId) { rowIndex = i; break; }
+  }
+  if (rowIndex === -1) return jsonResponse({ status: 'error', message: '找不到對應的資料列' });
+
+  // 更新欄位，一次寫回整列
+  var updated = allValues[rowIndex].slice();
+  var row = data.row || {};
+  HEADERS.forEach(function(h, colIdx) {
+    if (h !== '提交ID' && row[h] !== undefined) updated[colIdx] = row[h];
+  });
+  sheet.getRange(rowIndex + 2, 1, 1, HEADERS.length).setValues([updated]);
+
+  return jsonResponse({ status: 'success', updated: 1 });
+}
+
 function handleUpdate(data) {
   var sheet = getOrCreateSheet();
   var submissionId = data.submissionId;
@@ -79,7 +113,8 @@ function handleUpdate(data) {
   // 由下往上刪，避免列號位移
   var lastRow = sheet.getLastRow();
   for (var i = lastRow; i >= 2; i--) {
-    if (sheet.getRange(i, 1).getValue() === submissionId)
+    var cellVal = String(sheet.getRange(i, 1).getValue());
+    if (cellVal === submissionId || cellVal.startsWith(submissionId + '-'))
       sheet.deleteRow(i);
   }
 
@@ -89,6 +124,34 @@ function handleUpdate(data) {
     }));
   });
   return jsonResponse({ status: 'success', updated: rows.length });
+}
+
+function handleOrderInsert(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(ORDER_SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(ORDER_SHEET_NAME);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(ORDER_HEADERS);
+    var hr = sheet.getRange(1, 1, 1, ORDER_HEADERS.length);
+    hr.setFontWeight('bold');
+    hr.setBackground('#27500A');
+    hr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+
+  var rows = data.rows;
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return jsonResponse({ status: 'error', message: '沒有資料' });
+
+  rows.forEach(function(row) {
+    sheet.appendRow(ORDER_HEADERS.map(function(h) {
+      // 前端欄位名稱對應
+      if (h === '店家/料理人') return row['店家料理人'] || '';
+      return row[h] !== undefined ? row[h] : '';
+    }));
+  });
+
+  return jsonResponse({ status: 'success', inserted: rows.length });
 }
 
 // ── GET ─────────────────────────────────────
