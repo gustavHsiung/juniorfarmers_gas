@@ -1,12 +1,12 @@
 // =============================================
 // 農產品登記表單 — Google Apps Script v2
-// 新增：提交ID、查詢（多週次）、覆蓋修改
+// 新增：提交ID、查詢（多週次）、覆蓋修改、實際出貨價
 // =============================================
 
 var SHEET_NAME = '農場菜單';
 var HEADERS = ['提交ID', '時間戳記', '登記人', '農場', '週次',
                '品名', '數量', '單位', '基本進貨價',
-               '批價', '批價門檻', '末端建議售價', '品項備注', '本批備註'];
+               '批價', '批價門檻', '末端建議售價', '農二出貨價', '品項備注', '本批備註'];
 
 var ORDER_SHEET_NAME = '料理人下單';
 var ORDER_HEADERS = ['時間戳記', '登記人', '店家/料理人', '週次',
@@ -63,12 +63,11 @@ function handleInsert(data) {
   if (!rows || !Array.isArray(rows) || rows.length === 0)
     return jsonResponse({ status: 'error', message: '沒有資料' });
 
-  // 為這批提交統一產生一個 ID
   var submissionId = Utilities.getUuid();
 
   rows.forEach(function(row, i) {
     sheet.appendRow(HEADERS.map(function(h) {
-      if (h === '提交ID') return submissionId + '-' + i;          // ← 補上這行
+      if (h === '提交ID') return submissionId + '-' + i;
       return row[h] !== undefined ? row[h] : '';
     }));
   });
@@ -84,7 +83,6 @@ function handleUpdateRow(data) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ status: 'error', message: '找不到對應的資料列' });
 
-  // 一次讀完，在記憶體裡找目標列
   var allValues = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
   var rowIndex = -1;
   for (var i = 0; i < allValues.length; i++) {
@@ -92,7 +90,6 @@ function handleUpdateRow(data) {
   }
   if (rowIndex === -1) return jsonResponse({ status: 'error', message: '找不到對應的資料列' });
 
-  // 更新欄位，一次寫回整列
   var updated = allValues[rowIndex].slice();
   var row = data.row || {};
   HEADERS.forEach(function(h, colIdx) {
@@ -110,7 +107,6 @@ function handleUpdate(data) {
   if (!submissionId)
     return jsonResponse({ status: 'error', message: '缺少提交ID' });
 
-  // 由下往上刪，避免列號位移
   var lastRow = sheet.getLastRow();
   for (var i = lastRow; i >= 2; i--) {
     var cellVal = String(sheet.getRange(i, 1).getValue());
@@ -145,7 +141,6 @@ function handleOrderInsert(data) {
 
   rows.forEach(function(row) {
     sheet.appendRow(ORDER_HEADERS.map(function(h) {
-      // 前端欄位名稱對應
       if (h === '店家/料理人') return row['店家料理人'] || '';
       return row[h] !== undefined ? row[h] : '';
     }));
@@ -162,7 +157,6 @@ function doGet(e) {
   return jsonResponse({ status: 'ok', message: '農產品登記 API 正常運作中 ✅' });
 }
 
-// 回傳工作表中所有不重複週次（供前端顯示選擇按鈕）
 function handleWeeks() {
   var sheet = getOrCreateSheet();
   var lastRow = sheet.getLastRow();
@@ -175,12 +169,10 @@ function handleWeeks() {
     if (w) seen[w] = true;
   });
 
-  // 排序：最新在前
   var weeks = Object.keys(seen).sort().reverse();
   return jsonResponse({ status: 'success', weeks: weeks });
 }
 
-// 查詢：weeks 為逗號分隔多週次，例如 "2025-05-第1週,2025-05-第2週"
 function handleQuery(params) {
   var sheet = getOrCreateSheet();
   var lastRow = sheet.getLastRow();
